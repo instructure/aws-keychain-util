@@ -37,11 +37,14 @@ To list items in the keychain:
 
     $ aws-creds ls
 
-To start a shell with AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+To show some saved credentials:
+
+    $ aws-creds cat <name>
+
+To start a shell with `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`
 set in the environment:
 
     $ aws-creds shell <name>
-
 
 
 ## Contributing
