@@ -58,7 +58,7 @@ when 'init'
   end
 
   name = ask("Name for AWS keychain (default: 'aws'): ")
-  name = "aws" if keychain == ""
+  name = "aws" if name == ""
 
   puts "The OS will now ask you for a password to protect your keychain. Choose wisely."
   keychain = Keychain.create(name)
