@@ -1,0 +1,126 @@
+#!/usr/bin/env ruby
+
+require 'rubygems'
+require 'highline'
+require 'keychain'
+require 'json'
+
+def ask(question)
+  HighLine.new.ask(question)
+end
+
+def ask_secure(question)
+  HighLine.new.ask(question) { |q| q.echo = '*' }
+end
+
+PREFS_FILE = File.expand_path "~/.aws-keychain-util"
+
+def load_keychain
+  unless File.exist? PREFS_FILE
+    puts "You have not set up aws-creds yet. To do so, run:"
+    puts "    #{$0} init"
+    exit 1
+  end
+
+  prefs = JSON.parse(File.read(PREFS_FILE))
+  Keychain.open(prefs['aws_keychain_name'])
+end
+
+def get_item(name)
+  load_keychain.generic_passwords.where(:label => name).first
+end
+
+def get_name_from_args_for_command(command)
+  if ARGV.length < 1
+    puts "Usage: #{$0} #{command} <name>"
+    exit 1
+  end
+  ARGV.shift
+end
+
+def get_item_from_args_for_command(command)
+  name = get_name_from_args_for_command(command)
+  item = get_item(name)
+  unless item
+    puts "Could not find item with name #{name}"
+    exit 1
+  end
+  item
+end
+
+command = ARGV.shift
+
+case command
+when 'init'
+  if File.exist? PREFS_FILE
+    puts "#{PREFS_FILE} already exists. Please remove it to run init again."
+    exit 1
+  end
+
+  name = ask("Name for AWS keychain (default: 'aws'): ")
+  name = "aws" if keychain == ""
+
+  puts "The OS will now ask you for a password to protect your keychain. Choose wisely."
+  keychain = Keychain.create(name)
+  keychain.lock_interval = 300
+  keychain.lock_on_sleep = true
+
+  $prefs = { 'aws_keychain_name' => name }
+  File.new(PREFS_FILE, "w").write JSON.dump($prefs)
+
+  puts "Your AWS keychain has been created and configured to auto-lock after"
+  puts "5 minutes, and when sleeping. You can change those options in"
+  puts "Keychain Access."
+  puts
+  puts "You can now add accounts to the keychain with:"
+  puts "    #{$0} add"
+
+when 'ls'
+  keychain = load_keychain
+  keychain.generic_passwords.all.sort {|a,b|
+    a.attributes[:label] <=> b.attributes[:label]
+  }.each do |item|
+    puts "  #{item.attributes[:label]}"
+  end
+
+when 'add'
+  keychain = load_keychain
+  name     =        ask("      account name: ")
+  account  =        ask("     access key id: ")
+  password = ask_secure(" secret_access_key: ")
+
+  item = keychain.generic_passwords.create(
+    :label => name,
+    :account => account,
+    :password => password
+  )
+
+when 'cat'
+  item = get_item_from_args_for_command('cat')
+  puts "AWS_ACCESS_KEY_ID=#{item.attributes[:account]}"
+  puts "AWS_SECRET_ACCESS_KEY=#{item.password}"
+
+when 'rm'
+  item = get_item_from_args_for_command('rm')
+  item.delete
+
+when 'shell'
+  if ENV['AWS_CREDS_NAME']
+    puts "Already in aws-creds shell (AWS_CREDS_NAME is #{ENV['AWS_CREDS_NAME']})"
+    exit 1
+  end
+
+  item = get_item_from_args_for_command('shell')
+  aws_env = {}
+  aws_env['AWS_ACCESS_KEY_ID'] = item.attributes[:account]
+  aws_env['AWS_SECRET_ACCESS_KEY'] = item.password
+  aws_env['AWS_CREDS_NAME'] = item.attributes[:label]
+  aws_env['RPROMPT'] = "(aws #{item.attributes[:label]})" # zsh only
+
+  exec(aws_env, ENV['SHELL'])
+
+else
+  puts "Usage: #{$0} <command> <arguments>"
+  puts "  Commands: init, ls, add, cat, rm, shell"
+end
+
