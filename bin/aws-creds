@@ -112,8 +112,8 @@ when 'shell'
 
   item = get_item_from_args_for_command('shell')
   aws_env = {}
-  aws_env['AWS_ACCESS_KEY_ID'] = item.attributes[:account]
-  aws_env['AWS_SECRET_ACCESS_KEY'] = item.password
+  aws_env['AWS_ACCESS_KEY_ID'] = aws_env['AWS_ACCESS_KEY'] = item.attributes[:account]
+  aws_env['AWS_SECRET_ACCESS_KEY'] = aws_env['AWS_SECRET_KEY'] = item.password
   aws_env['AWS_CREDS_NAME'] = item.attributes[:label]
   aws_env['RPROMPT'] = "(aws #{item.attributes[:label]})" # zsh only
 
