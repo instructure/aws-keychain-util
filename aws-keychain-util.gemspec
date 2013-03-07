@@ -5,7 +5,7 @@ require 'aws-keychain-util/version'
 
 Gem::Specification.new do |gem|
   gem.name          = "aws-keychain-util"
-  gem.version       = '0.0.2'
+  gem.version       = '0.0.3'
   gem.authors       = ["Zach Wily"]
   gem.email         = ["zach@zwily.com"]
   gem.description   = %q{Helps manage a keychain of AWS credentials on OS X.}
