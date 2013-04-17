@@ -46,6 +46,21 @@ set in the environment:
 
     $ aws-creds shell <name>
 
+To automatically grab AWS credentials from your keychain when using
+the aws-sdk gem, add the following code:
+
+    AWS.config(:credential_provider => AwsKeychainUtil::CredentialProvider.new('<name>', 'keychain name'))
+
+## Security
+
+Unfortunately, when Keychain whitelists either the `aws-creds` script
+or a ruby application that uses the CredentialProvider for aws-sdk,
+it whitelists `ruby` as a whole. This means *any* ruby script will
+be able to access your AWS credentials. We recommend that you either
+do not whitelist your script at all (don't click "Always Allow"), or
+use a dedicated keychain with an auto-lock interval of less than five
+minutes. Keychains created with `aws-creds` will automatically be
+configured to auto-lock at 5 minutes.
 
 ## Contributing
 
