@@ -16,14 +16,19 @@ end
 PREFS_FILE = File.expand_path "~/.aws-keychain-util"
 
 def load_keychain
-  unless File.exist? PREFS_FILE
-    puts "You have not set up aws-creds yet. To do so, run:"
-    puts "    #{$0} init"
-    exit 1
+  keychain = if File.exist? PREFS_FILE
+    prefs = JSON.parse(File.read(PREFS_FILE))
+    Keychain.open(prefs['aws_keychain_name'])
+  else
+    Keychain.default
   end
-
-  prefs = JSON.parse(File.read(PREFS_FILE))
-  Keychain.open(prefs['aws_keychain_name'])
+  if keychain.lock_interval > 300
+    $stderr.puts "Your keychain is *not* set to lock automatically in under five minutes. This could be dangerous."
+    if !File.exist? PREFS_FILE
+      $stderr.puts "You should probably run `#{$0} init` to create a new, secure keychain."
+    end
+  end
+  keychain
 end
 
 def get_item(name)

@@ -1,11 +1,10 @@
 # -*- encoding: utf-8 -*-
 lib = File.expand_path('../lib', __FILE__)
 $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
-require 'aws-keychain-util/version'
 
 Gem::Specification.new do |gem|
   gem.name          = "aws-keychain-util"
-  gem.version       = '0.0.3'
+  gem.version       = '0.0.4'
   gem.authors       = ["Zach Wily"]
   gem.email         = ["zach@zwily.com"]
   gem.description   = %q{Helps manage a keychain of AWS credentials on OS X.}
