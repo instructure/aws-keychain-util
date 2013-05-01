@@ -4,7 +4,7 @@ $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 
 Gem::Specification.new do |gem|
   gem.name          = "aws-keychain-util"
-  gem.version       = '0.0.4'
+  gem.version       = '0.0.5'
   gem.authors       = ["Zach Wily"]
   gem.email         = ["zach@zwily.com"]
   gem.description   = %q{Helps manage a keychain of AWS credentials on OS X.}
