@@ -5,6 +5,13 @@ require 'highline'
 require 'keychain'
 require 'json'
 
+trap("SIGINT") do
+  puts
+  $stderr.puts "\nExecution aborted."
+  puts
+  exit 1
+end
+
 def ask(question)
   HighLine.new.ask(question)
 end
@@ -14,37 +21,70 @@ def ask_secure(question)
 end
 
 PREFS_FILE = File.expand_path "~/.aws-keychain-util"
+PREFS_CONTENT = JSON.parse(File.read(PREFS_FILE)) if File.exist? PREFS_FILE
 
-def load_keychain
-  keychain = if File.exist? PREFS_FILE
-    prefs = JSON.parse(File.read(PREFS_FILE))
-    Keychain.open(prefs['aws_keychain_name'])
-  else
-    Keychain.default
+def load_keychain(keychain_name=nil)
+
+  unless File.exist? PREFS_FILE
+    $stderr.puts "FATAL: #{PREFS_FILE} doesn't exist. Use 'aws-creds init' to create it. Exiting."
+    exit 0
   end
+
+  keychain_name = keychain_name_from_args unless keychain_name
+  puts "Using '#{keychain_name}' keychain"
+
+  unless PREFS_CONTENT['aws_keychains'].include? keychain_name
+      puts
+      $stderr.puts "ERROR: '#{keychain_name}' keychain is not configured for aws-creds inside #{PREFS_FILE}"
+      puts "\nIf you want to use these keychain with aws-creds use:"
+      puts "    #{$0} init"
+      puts
+      exit 1
+  end
+
+  keychain = Keychain.open(keychain_name)
+
   if keychain.lock_interval > 300
     $stderr.puts "Your keychain is *not* set to lock automatically in under five minutes. This could be dangerous."
     if !File.exist? PREFS_FILE
       $stderr.puts "You should probably run `#{$0} init` to create a new, secure keychain."
     end
   end
+  
   keychain
 end
 
+def keychain_name_from_args
+  name = get_name_from_args
+  if name.include? ":"
+    name = name.split(":")[0]
+    name
+  else
+    PREFS_CONTENT['default_keychain']
+  end
+end
+
 def get_item(name)
+  name = name.split(":")[1] if name.include? ":"
   load_keychain.generic_passwords.where(:label => name).first
 end
 
-def get_name_from_args_for_command(command)
+def get_name_from_args(options={:whiny => false})
   if ARGV.length < 1
-    puts "Usage: #{$0} #{command} <name>"
-    exit 1
+    if options[:whiny] 
+      $stderr.puts "ERROR: No arguments were passed for this command"
+      puts "Usage: #{$0} #{options[:command]} [<keychain>:]<name>"
+      exit 1
+    end
+    false # this let's non whiny command that no name was given
+  else
+    ARGV[0]
   end
-  ARGV.shift
+  
 end
 
 def get_item_from_args_for_command(command)
-  name = get_name_from_args_for_command(command)
+  name = get_name_from_args :command => command,  :whiny => true
   item = get_item(name)
   unless item
     puts "Could not find item with name #{name}"
@@ -53,79 +93,146 @@ def get_item_from_args_for_command(command)
   item
 end
 
+
 command = ARGV.shift
+puts #distance from the prompt
 
-case command
-when 'init'
-  if File.exist? PREFS_FILE
-    puts "#{PREFS_FILE} already exists. Please remove it to run init again."
-    exit 1
+
+begin
+  case command
+  when 'default'
+      puts "The default keychain is #{PREFS_CONTENT['default_keychain']}"
+  
+  when 'keychains'
+      puts "You have enabled the following keychains for aws-creds: #{PREFS_CONTENT['aws_keychains']}"
+
+  when 'init'
+    if File.exist? PREFS_FILE
+      puts "#{PREFS_FILE} already exists."
+      puts "Delete this file if you want to configure from scratch."
+
+      prefs = PREFS_CONTENT
+      puts "\nYou have enabled the following keychains for aws-creds: #{prefs['aws_keychains']}"
+      puts "\nYou can register an existing keychain with aws-creds or create a new one."
+      puts "You can also make an aws-creds configured keychain the default one."
+      puts
+    else
+      # if there are no pref, set the default
+      prefs = {'aws_keychains' => [], 'default_keychain' => nil}
+    end
+
+    name = ask("Name for AWS keychain (default: 'aws'): ")
+    name = "aws" if name == ""
+
+    # don't ask if this is the only keychain in the config
+    if prefs['aws_keychains'].length == 0
+      is_default = true
+    else
+      is_default = ask("Do you want this to be your default keychain when using aws-creds? (y/n): ")
+      is_default = is_default=='y' ? true : false
+    end
+
+    begin
+      # assume there's no such keychain & try to create it
+      puts "\nChecking if '#{name}' keychain exists or creating it."
+
+      keychain = Keychain.create(name)
+      keychain.lock_interval = 300
+      keychain.lock_on_sleep = true
+
+      puts "Your AWS keychain has been created and configured to auto-lock after"
+      puts "5 minutes, and when sleeping. You can change those options in"
+      puts "Keychain Access."
+    rescue
+      puts "The keychain exists, skipping creation and configuration."
+      keychain = Keychain.open name
+    end
+
+    # if this one was marked to be the default, or there's no keychain in the list
+    if is_default || prefs['aws_keychains'].length == 0
+      prefs['default_keychain'] = name
+    end
+
+    # this command can also change the config to make default an existing keychain
+    # therefore we only add if the keychain used is not already in the configs
+    prefs['aws_keychains'] << name unless prefs['aws_keychains'].include? name
+
+    File.new(PREFS_FILE, "w").write prefs.to_json
+
+    puts "\nSaving #{PREFS_FILE}"
+
+    puts "\nYou can now add accounts to the keychain with:"
+    puts "    #{$0} add #{name unless is_default}"
+    #init command ends
+
+  when 'ls'
+    keychain_name = get_name_from_args || PREFS_CONTENT['default_keychain']
+    keychain = load_keychain(keychain_name)
+    
+    items = keychain.generic_passwords.all.sort {|a,b|
+      a.attributes[:label] <=> b.attributes[:label]
+    }
+    
+    if items.length > 0
+      puts "\nAccounts:"
+      items.each do |item|
+        puts "  - #{item.attributes[:label]}"
+      end
+    else
+      puts "  Empty keychain."
+    end
+
+  when 'add'
+    keychain_name = get_name_from_args || PREFS_CONTENT['default_keychain']
+    keychain = load_keychain keychain_name
+    puts
+    name     =        ask("      account name: ")
+    account  =        ask("     access key id: ")
+    password = ask_secure(" secret_access_key: ")
+
+    item = keychain.generic_passwords.create(
+      :label => name,
+      :account => account,
+      :password => password
+    )
+
+  when 'cat'
+    item = get_item_from_args_for_command('cat')
+    puts "AWS_ACCESS_KEY_ID=#{item.attributes[:account]}"
+    puts "AWS_SECRET_ACCESS_KEY=#{item.password}"
+
+  when 'rm'
+    item = get_item_from_args_for_command('rm')
+    item.delete
+
+  when 'shell'
+    if ENV['AWS_CREDS_NAME']
+      puts "Already in aws-creds shell (AWS_CREDS_NAME is #{ENV['AWS_CREDS_NAME']})"
+      exit 1
+    end
+
+    item = get_item_from_args_for_command('shell')
+    aws_env = {}
+    aws_env['AWS_ACCESS_KEY_ID'] = aws_env['AWS_ACCESS_KEY'] = item.attributes[:account]
+    aws_env['AWS_SECRET_ACCESS_KEY'] = aws_env['AWS_SECRET_KEY'] = item.password
+    aws_env['AWS_CREDS_NAME'] = item.attributes[:label]
+    aws_env['RPROMPT'] = "(aws #{item.attributes[:label]})" # zsh only
+
+    exec(aws_env, ENV['SHELL'])
+  else
+    puts "\nUsage: #{$0} <command> [<arguments>]"
+   
+    puts "\nCommands:\n"
+    puts "\tinit                      Add existing keychain, create a new one or change the default."
+    puts "\tls [<keychain>]           List the accounts in the keychain. Uses the default if no keychain is passed."
+    puts "\tadd [<keychain>]:name     Add a new account to the keychain."
+    puts "\tcat [<keychain>]:name     Show the stored contents for an account."
+    puts "\tshell [<keychain>]:name   Start a new shell with the account's data as environment variables."
+    puts "\tdefault                   Show the default template's name"
   end
 
-  name = ask("Name for AWS keychain (default: 'aws'): ")
-  name = "aws" if name == ""
-
-  puts "The OS will now ask you for a password to protect your keychain. Choose wisely."
-  keychain = Keychain.create(name)
-  keychain.lock_interval = 300
-  keychain.lock_on_sleep = true
-
-  $prefs = { 'aws_keychain_name' => name }
-  File.new(PREFS_FILE, "w").write JSON.dump($prefs)
-
-  puts "Your AWS keychain has been created and configured to auto-lock after"
-  puts "5 minutes, and when sleeping. You can change those options in"
-  puts "Keychain Access."
-  puts
-  puts "You can now add accounts to the keychain with:"
-  puts "    #{$0} add"
-
-when 'ls'
-  keychain = load_keychain
-  keychain.generic_passwords.all.sort {|a,b|
-    a.attributes[:label] <=> b.attributes[:label]
-  }.each do |item|
-    puts "  #{item.attributes[:label]}"
-  end
-
-when 'add'
-  keychain = load_keychain
-  name     =        ask("      account name: ")
-  account  =        ask("     access key id: ")
-  password = ask_secure(" secret_access_key: ")
-
-  item = keychain.generic_passwords.create(
-    :label => name,
-    :account => account,
-    :password => password
-  )
-
-when 'cat'
-  item = get_item_from_args_for_command('cat')
-  puts "AWS_ACCESS_KEY_ID=#{item.attributes[:account]}"
-  puts "AWS_SECRET_ACCESS_KEY=#{item.password}"
-
-when 'rm'
-  item = get_item_from_args_for_command('rm')
-  item.delete
-
-when 'shell'
-  if ENV['AWS_CREDS_NAME']
-    puts "Already in aws-creds shell (AWS_CREDS_NAME is #{ENV['AWS_CREDS_NAME']})"
-    exit 1
-  end
-
-  item = get_item_from_args_for_command('shell')
-  aws_env = {}
-  aws_env['AWS_ACCESS_KEY_ID'] = aws_env['AWS_ACCESS_KEY'] = item.attributes[:account]
-  aws_env['AWS_SECRET_ACCESS_KEY'] = aws_env['AWS_SECRET_KEY'] = item.password
-  aws_env['AWS_CREDS_NAME'] = item.attributes[:label]
-  aws_env['RPROMPT'] = "(aws #{item.attributes[:label]})" # zsh only
-
-  exec(aws_env, ENV['SHELL'])
-
-else
-  puts "Usage: #{$0} <command> <arguments>"
-  puts "  Commands: init, ls, add, cat, rm, shell"
+rescue
+  $stderr.puts "\nExecution aborted. This can be caused by cancelling an action, providing the wrong password or because you haven't run aws-creds init."
+ensure
+  puts #distance from the prompt
 end
-
