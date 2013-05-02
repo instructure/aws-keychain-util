@@ -37,7 +37,7 @@ end
 
 def get_name_from_args_for_command(command)
   if ARGV.length < 1
-    puts "Usage: #{$0} #{command} <name>"
+    puts "Usage: #{$0} #{command} [<keychain>:]<name>"
     exit 1
   end
   ARGV.shift
@@ -56,6 +56,9 @@ end
 command = ARGV.shift
 
 case command
+
+when 'default'
+    puts "The default keychain is #{JSON.parse(File.read(PREFS_FILE))['default_keychain']}"
 when 'init'
   if File.exist? PREFS_FILE
     puts "\n#{PREFS_FILE} already exists."
@@ -71,8 +74,14 @@ when 'init'
   name = ask("\nName for AWS keychain (default: 'aws'): ")
   name = "aws" if name == ""
 
-  is_default = ask("Do you want this to be your default keychain when using aws-creds? (y/n): ")
-  is_default = is_default=='y' ? true : false
+  # don't ask if this is the only keychain in the config
+  if prefs['aws_keychains'].length == 0
+    is_default = true
+  else
+    is_default = ask("Do you want this to be your default keychain when using aws-creds? (y/n): ")
+    is_default = is_default=='y' ? true : false
+  end
+  
 
   begin
     # check this doesn't exist
@@ -153,7 +162,16 @@ when 'shell'
   exec(aws_env, ENV['SHELL'])
 
 else
-  puts "Usage: #{$0} <command> <arguments>"
-  puts "  Commands: init, ls, add, cat, rm, shell"
+  puts "\nUsage: #{$0} <command> [<arguments>]"
+ # puts "\nFor non-default keychains use [<keychain>:]<name> instead of <name> as the argument e.g.:"
+  #puts "  aws-creds add alt-keychain:account1"
+  puts "\nCommands:\n"
+  puts "\tinit                      Add existing keychain, create a new one or change the default."
+  puts "\tls [<keychain>]           List the accounts in the keychain. Uses the default if no keychain is passed."
+  puts "\tadd [<keychain>]:name     Add a new account to the keychain."
+  puts "\tcat [<keychain>]:name     Show the stored contents for an account."
+  puts "\tshell [<keychain>]:name   Start a new shell with the account's data as environment variables."
+  puts "\tdefault                   Show the default template's name"
+  puts
 end
 
