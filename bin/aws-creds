@@ -21,11 +21,9 @@ def load_keychain
     $stderr.puts "FATAL: #{PREFS_FILE} doesn't exist. Use 'aws-creds init' to create it. Exiting."
     exit 0
   end
-  #prefs = JSON.parse(File.read(PREFS_FILE))
 
   keychain_name = keychain_name_from_args
   puts "Using '#{keychain_name}' keychain"
-  
 
   keychain = Keychain.open(keychain_name)
 
@@ -35,6 +33,7 @@ def load_keychain
       $stderr.puts "You should probably run `#{$0} init` to create a new, secure keychain."
     end
   end
+  
   keychain
 end
 
@@ -84,14 +83,15 @@ begin
 
   when 'default'
       puts "The default keychain is #{JSON.parse(File.read(PREFS_FILE))['default_keychain']}"
+
   when 'init'
     if File.exist? PREFS_FILE
       puts "#{PREFS_FILE} already exists."
-      puts "Delete this file if you want to configure from scratch.\n\n"
+      puts "Delete this file if you want to configure from scratch."
 
       prefs = JSON.parse(File.read(PREFS_FILE))
-      puts "You have enabled the following keychains for aws-creds: #{prefs['aws_keychains']}"
-      puts "You can register an existing keychain with aws-creds or create a new one."
+      puts "\nYou have enabled the following keychains for aws-creds: #{prefs['aws_keychains']}"
+      puts "\nYou can register an existing keychain with aws-creds or create a new one."
       puts "You can also make an aws-creds configured keychain the default one."
       puts
     end
@@ -124,6 +124,7 @@ begin
       puts "Keychain Access."
     end
 
+    # if there are no pref, set the default
     prefs = prefs ? prefs : {'aws_keychains' => [], 'default_keychain' => nil}
 
     # if this one was marked to be the default, or there's no keychain in the list
@@ -131,14 +132,16 @@ begin
       prefs['default_keychain'] = name
     end
 
+    # this command can also change the config to make default an existing keychain
+    # therefore we only add if the keychain used is not already in the configs
     prefs['aws_keychains'] << name unless prefs['aws_keychains'].include? name
 
     File.new(PREFS_FILE, "w").write prefs.to_json
 
-    puts "\nSaving ~/.aws-keychain-util"
+    puts "\nSaving #{PREFS_FILE}"
 
     puts "\nYou can now add accounts to the keychain with:"
-    puts "    #{$0} add"
+    puts "    #{$0} add #{name unless is_default}"
     puts
     #init command ends
 
@@ -207,4 +210,3 @@ rescue
 ensure
   puts #Always leave a nice clean line of distance from the next prompt
 end
-
