@@ -58,27 +58,55 @@ command = ARGV.shift
 case command
 when 'init'
   if File.exist? PREFS_FILE
-    puts "#{PREFS_FILE} already exists. Please remove it to run init again."
-    exit 1
+    puts "\n#{PREFS_FILE} already exists."
+    puts "Delete this file if you want to configure from scratch.\n\n"
+
+    prefs = JSON.parse(File.read(PREFS_FILE))
+    puts "You have enabled the following keychains for aws-creds: #{prefs['aws_keychains']}"
+    puts "You can register an existing keychain with aws-creds or create a new one."
+    puts "You can also make an aws-creds configured keychain the default one."
+    
   end
 
-  name = ask("Name for AWS keychain (default: 'aws'): ")
+  name = ask("\nName for AWS keychain (default: 'aws'): ")
   name = "aws" if name == ""
 
-  puts "The OS will now ask you for a password to protect your keychain. Choose wisely."
-  keychain = Keychain.create(name)
-  keychain.lock_interval = 300
-  keychain.lock_on_sleep = true
+  is_default = ask("Do you want this to be your default keychain when using aws-creds? (y/n): ")
+  is_default = is_default=='y' ? true : false
 
-  $prefs = { 'aws_keychain_name' => name }
-  File.new(PREFS_FILE, "w").write JSON.dump($prefs)
+  begin
+    # check this doesn't exist
+    Keychain.open name
+    puts "\nThe keychain exists, skipping creation and configuration."
+  rescue
+    #create it otherwise
+    puts "\nThe OS will now ask you for a password to protect your keychain. Choose wisely."
+    keychain = Keychain.create(name)
+    keychain.lock_interval = 300
+    keychain.lock_on_sleep = true
 
-  puts "Your AWS keychain has been created and configured to auto-lock after"
-  puts "5 minutes, and when sleeping. You can change those options in"
-  puts "Keychain Access."
-  puts
-  puts "You can now add accounts to the keychain with:"
+    puts "Your AWS keychain has been created and configured to auto-lock after"
+    puts "5 minutes, and when sleeping. You can change those options in"
+    puts "Keychain Access."
+  end
+
+  prefs = prefs ? prefs : {'aws_keychains' => [], 'default_keychain' => nil}
+
+  # if this one was marked to be the default, or there's no keychain in the list
+  if is_default || prefs['aws_keychains'].length == 0
+    prefs['default_keychain'] = name
+  end
+
+  prefs['aws_keychains'] << name unless prefs['aws_keychains'].include? name
+
+  File.new(PREFS_FILE, "w").write prefs.to_json
+
+  puts "\nSaving ~/.aws-keychain-util"
+
+  puts "\nYou can now add accounts to the keychain with:"
   puts "    #{$0} add"
+  puts
+  #init command ends
 
 when 'ls'
   keychain = load_keychain
