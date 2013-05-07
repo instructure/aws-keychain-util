@@ -102,6 +102,9 @@ begin
   case command
   when 'default'
       puts "The default keychain is #{PREFS_CONTENT['default_keychain']}"
+  
+  when 'keychains'
+      puts "You have enabled the following keychains for aws-creds: #{PREFS_CONTENT['aws_keychains']}"
 
   when 'init'
     if File.exist? PREFS_FILE
@@ -165,12 +168,15 @@ begin
   when 'ls'
     keychain_name = get_name_from_args || PREFS_CONTENT['default_keychain']
     keychain = load_keychain(keychain_name)
+    
     items = keychain.generic_passwords.all.sort {|a,b|
       a.attributes[:label] <=> b.attributes[:label]
     }
-    if items.length > 1
-      item.each do |item|
-        puts "  #{item.attributes[:label]}"
+    
+    if items.length > 0
+      puts "\nAccounts:"
+      items.each do |item|
+        puts "  - #{item.attributes[:label]}"
       end
     else
       puts "  Empty keychain."
@@ -226,7 +232,7 @@ begin
   end
 
 rescue
-  $stderr.puts "\nExecution aborted."
+  $stderr.puts "\nExecution aborted. This can be caused by cancelling an action, providing the wrong password or because you haven't run aws-creds init."
 ensure
   puts #distance from the prompt
 end
