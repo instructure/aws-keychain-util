@@ -1,5 +1,3 @@
-require 'aws-keychain-util/credential_provider'
-
 module AwsKeychainUtil
   PREFS_FILE = File.expand_path "~/.aws-keychain-util"
 

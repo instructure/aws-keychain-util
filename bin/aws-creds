@@ -1,9 +1,14 @@
 #!/usr/bin/env ruby
 
+if $0 == "bin/aws-creds"
+  $LOAD_PATH.unshift(File.expand_path(File.dirname(__FILE__)) + "/../lib")
+end
+
 require 'rubygems'
 require 'highline'
 require 'keychain'
 require 'json'
+require 'aws-keychain-util'
 
 def ask(question)
   HighLine.new.ask(question)
