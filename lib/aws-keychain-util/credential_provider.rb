@@ -11,7 +11,7 @@ module AwsKeychainUtil
     end
 
     def get_credentials
-      keychain = @keychain ? Keychain.open(@keychain) : Keychain.default
+      keychain = @keychain ? Keychain.open(@keychain) : AwsKeychainUtil.load_keychain
       item = keychain.generic_passwords.where(:label => @item).first
       return {} unless item
       {
