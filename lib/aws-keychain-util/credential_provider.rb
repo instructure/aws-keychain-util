@@ -1,5 +1,6 @@
 require 'aws-sdk'
 require 'keychain'
+require 'aws-keychain-util'
 
 module AwsKeychainUtil
   class CredentialProvider
