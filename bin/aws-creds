@@ -13,18 +13,11 @@ def ask_secure(question)
   HighLine.new.ask(question) { |q| q.echo = '*' }
 end
 
-PREFS_FILE = File.expand_path "~/.aws-keychain-util"
-
 def load_keychain
-  keychain = if File.exist? PREFS_FILE
-    prefs = JSON.parse(File.read(PREFS_FILE))
-    Keychain.open(prefs['aws_keychain_name'])
-  else
-    Keychain.default
-  end
-  if keychain.lock_interval > 300
+  keychain = AwsKeychainUtil.load_keychain
+  if keychain && keychain.lock_interval > 300
     $stderr.puts "Your keychain is *not* set to lock automatically in under five minutes. This could be dangerous."
-    if !File.exist? PREFS_FILE
+    if !File.exist? AwsKeychainUtil::PREFS_FILE
       $stderr.puts "You should probably run `#{$0} init` to create a new, secure keychain."
     end
   end
@@ -57,8 +50,8 @@ command = ARGV.shift
 
 case command
 when 'init'
-  if File.exist? PREFS_FILE
-    puts "#{PREFS_FILE} already exists. Please remove it to run init again."
+  if File.exist? AwsKeychainUtil::PREFS_FILE
+    puts "#{AwsKeychainUtil::PREFS_FILE} already exists. Please remove it to run init again."
     exit 1
   end
 
@@ -71,7 +64,7 @@ when 'init'
   keychain.lock_on_sleep = true
 
   $prefs = { 'aws_keychain_name' => name }
-  File.new(PREFS_FILE, "w").write JSON.dump($prefs)
+  File.new(AwsKeychainUtil::PREFS_FILE, "w").write JSON.dump($prefs)
 
   puts "Your AWS keychain has been created and configured to auto-lock after"
   puts "5 minutes, and when sleeping. You can change those options in"
