@@ -83,12 +83,15 @@ when 'init'
   name = ask("Name for AWS keychain (default: 'aws'): ")
   name = "aws" if name == ""
 
+  shell_arguments = ask("Shell arguments (default: ''): ")
+  shell_arguments = "" if shell_arguments == ""
+
   puts "The OS will now ask you for a password to protect your keychain. Choose wisely."
   keychain = Keychain.create(name)
   keychain.lock_interval = 300
   keychain.lock_on_sleep = true
 
-  $prefs = { 'aws_keychain_name' => name }
+  $prefs = { 'aws_keychain_name' => name, 'shell_arguments' => shell_arguments }
   File.new(AwsKeychainUtil::PREFS_FILE, "w").write JSON.dump($prefs)
 
   puts "Your AWS keychain has been created and configured to auto-lock after"
@@ -185,7 +188,9 @@ when 'shell'
     exit 1
   end
 
+  prefs = AwsKeychainUtil.prefs
   item, token = get_item_from_args_for_command('shell')
+
   aws_env = {}
   aws_env['AWS_ACCESS_KEY_ID'] = aws_env['AWS_ACCESS_KEY'] = item.attributes[:account]
   aws_env['AWS_SECRET_ACCESS_KEY'] = aws_env['AWS_SECRET_KEY'] = item.password
@@ -196,7 +201,6 @@ when 'shell'
 
   if ARGV.empty?
     aws_env['RPROMPT'] = "(aws #{item.attributes[:label]})" # zsh only
-
     exec(aws_env, ENV['SHELL'])
   else
     exec(aws_env, *ARGV)

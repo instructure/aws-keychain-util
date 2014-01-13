@@ -3,11 +3,15 @@ module AwsKeychainUtil
 
   def self.load_keychain
     keychain = if File.exist? PREFS_FILE
-      prefs = JSON.parse(File.read(PREFS_FILE))
+      prefs = self.prefs
       Keychain.open(prefs['aws_keychain_name'])
     else
       Keychain.default
     end
     keychain
+  end
+
+  def self.prefs
+    JSON.parse(File.read(PREFS_FILE))
   end
 end
