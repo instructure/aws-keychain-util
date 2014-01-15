@@ -63,7 +63,7 @@ the aws-sdk gem, add the following code:
 
     AWS.config(:credential_provider => AwsKeychainUtil::CredentialProvider.new('<name>', 'keychain name'))
 
-## AWS Multi-Factor Authentication (MFA) Using AWS STS
+## AWS Multi-Factor Authentication (MFA) 
 
 To increase AWS security, it's possible to use MFA (multi-factor) authentication with the amazon APIs. 
 Managing temporary credentials is a serious challenge, as by definition the credentials expire after a
