@@ -31,7 +31,9 @@ To add an item to your aws keychain:
     $ aws-creds add
 
 This will prompt for a friendly name, the access key id,
-and the secret access key.
+and the secret access key. This also prompts for an optional
+MFA arn, which is necessary if you're going to use multifactor
+auth with AWS.
 
 To list items in the keychain:
 
@@ -46,10 +48,45 @@ set in the environment:
 
     $ aws-creds shell <name>
 
+To emit the (bourne shell style) environment variable exports that 
+you can source into your shell:
+
+    $ aws-creds env <name>
+
+To always load the given environment in your shell, add the following to
+your .bashrc or .zshrc
+
+    source `aws-creds env <name>`
+
 To automatically grab AWS credentials from your keychain when using
 the aws-sdk gem, add the following code:
 
     AWS.config(:credential_provider => AwsKeychainUtil::CredentialProvider.new('<name>', 'keychain name'))
+
+## AWS Multi-Factor Authentication (MFA) Using AWS STS
+
+To increase AWS security, it's possible to use MFA (multi-factor) authentication with the amazon APIs. 
+Managing temporary credentials is a serious challenge, as by definition the credentials expire after a
+fixed period of time.
+
+In order to require use of multifactor auth for API access, add the following to your IAM policy for the groups or
+users you wish to require MFA for:
+
+        "Null":{"aws:MultiFactorAuthAge":"true"}
+
+You then need to associate a multifactor authentication device with the IAM user. 
+[Amazon Directions for MFA Setup](http://docs.aws.amazon.com/IAM/latest/UserGuide/GenerateMFAConfig.html)
+
+In order to do a multifactor authentication, you need to run:
+
+    $ aws-creds mfa <name> <code>
+
+Where `<code>` is the numeric code on your multifactor auth device. Then you just need to either open a
+fresh shell for the `<name>` key or re-source your environment.
+
+The tool also tracks mfa expiration, and automatically removes expired tokens when you open a new shell 
+or source your env.
+
 
 ## Security
 
