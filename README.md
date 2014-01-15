@@ -69,13 +69,11 @@ To increase AWS security, it's possible to use MFA (multi-factor) authentication
 Managing temporary credentials is a serious challenge, as by definition the credentials expire after a
 fixed period of time.
 
-In order to require use of multifactor auth for API access, add the following to your IAM policy for the groups or
-users you wish to require MFA for:
-
-        "Null":{"aws:MultiFactorAuthAge":"true"}
-
 You then need to associate a multifactor authentication device with the IAM user. 
 [Amazon Directions for MFA Setup](http://docs.aws.amazon.com/IAM/latest/UserGuide/GenerateMFAConfig.html)
+
+Configuring MFA into your IAM policies for API access is a complex process, the 
+documentation for which is [Here](http://docs.aws.amazon.com/IAM/latest/UserGuide/MFAProtectedAPI.html#ExampleMFAforResource).
 
 In order to do a multifactor authentication, you need to run:
 
