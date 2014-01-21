@@ -169,12 +169,12 @@ when 'mfa'
 
 when 'env'
   item, token = get_item_from_args_for_command('shell')
-  puts "export AWS_ACCESS_KEY_ID = \"#{item.attributes[:account]}\""
-  puts "export AWS_ACCESS_KEY = \"#{item.attributes[:account]}\""
-  puts "export AWS_SECRET_ACCESS_KEY = \"#{item.password}\""
-  puts "export AWS_SECRET_KEY = \"#{item.password}\""
-  puts "export RPROMPT = \"(aws #{item.attributes[:label]})\""
-  puts "export AWS_CREDS_NAME = \"#{item.attributes[:label]}\""
+  puts "export AWS_ACCESS_KEY_ID=\"#{item.attributes[:account]}\""
+  puts "export AWS_ACCESS_KEY=\"#{item.attributes[:account]}\""
+  puts "export AWS_SECRET_ACCESS_KEY=\"#{item.password}\""
+  puts "export AWS_SECRET_KEY=\"#{item.password}\""
+  puts "export RPROMPT=\"(aws #{item.attributes[:label]})\""
+  puts "export AWS_CREDS_NAME=\"#{item.attributes[:label]}\""
   if token
     puts "export AWS_SECURITY_TOKEN = \"#{token.password}\""
   end
