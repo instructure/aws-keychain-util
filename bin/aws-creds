@@ -176,7 +176,7 @@ when 'env'
   puts "export RPROMPT=\"(aws #{item.attributes[:label]})\""
   puts "export AWS_CREDS_NAME=\"#{item.attributes[:label]}\""
   if token
-    puts "export AWS_SECURITY_TOKEN = \"#{token.password}\""
+    puts "export AWS_SECURITY_TOKEN=\"#{token.password}\""
   end
 
 when 'shell'
