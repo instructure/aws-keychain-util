@@ -9,6 +9,7 @@ require 'highline'
 require 'keychain'
 require 'json'
 require 'aws-keychain-util'
+require 'aws'
 
 def ask(question)
   HighLine.new.ask(question)
@@ -43,12 +44,31 @@ end
 
 def get_item_from_args_for_command(command)
   name = get_name_from_args_for_command(command)
+  item_mfa = get_item("#{name} mfa")
+  item_token = get_item("#{name} token")
+  if item_mfa
+    if item_mfa.attributes[:comment]
+      expires_at = Time.at(item_mfa.attributes[:comment].to_i)
+      if expires_at < Time.now
+          puts "# Removing expired STS credentials"
+          item_token.delete
+          item_token = nil
+          item_mfa.delete
+          item_mfa = nil
+      end
+    end
+  end
+  if item_mfa and item_token
+    puts "# Using temporary STS credentials"
+    return item_mfa, item_token
+  end
+
   item = get_item(name)
   unless item
     puts "Could not find item with name #{name}"
     exit 1
   end
-  item
+  return item, nil
 end
 
 command = ARGV.shift
@@ -91,21 +111,73 @@ when 'add'
   name     =        ask("      account name: ")
   account  =        ask("     access key id: ")
   password = ask_secure(" secret_access_key: ")
+  arn      =        ask("           mfa arn: ")
 
   item = keychain.generic_passwords.create(
     :label => name,
     :account => account,
-    :password => password
+    :password => password,
+    :comment => arn
   )
 
 when 'cat'
-  item = get_item_from_args_for_command('cat')
+  item, token = get_item_from_args_for_command('cat')
   puts "AWS_ACCESS_KEY_ID=#{item.attributes[:account]}"
   puts "AWS_SECRET_ACCESS_KEY=#{item.password}"
+  if token
+    puts "AWS_SECURITY_TOKEN=#{token.password}"
+  end
 
 when 'rm'
-  item = get_item_from_args_for_command('rm')
+  item, token = get_item_from_args_for_command('rm')
   item.delete
+
+when 'mfa'
+  keychain = load_keychain
+  item_name = ARGV.shift
+  code = ARGV.shift
+  if not item_name or not code
+    puts "Usage: aws-creds mfa <item-name> <mfa-code>"
+    exit(1)
+  end
+
+  sts_item = get_item("#{item_name} mfa")
+  sts_token = get_item("#{item_name} token")
+  if sts_item
+    puts "Removing existing STS credentials"
+    sts_item.delete
+    sts_token.delete if sts_token
+  end
+  
+  item, token = get_item(item_name)
+  sts = AWS::STS.new(:access_key_id => item.attributes[:account], :secret_access_key => item.password)
+  begin
+    response = sts.new_session(:duration => (60 * 60 * 12), :serial_number => item.attributes[:comment], :token_code => code)
+    temp_item = keychain.generic_passwords.create(:label => "#{item_name} mfa",
+                                                  :account => response.credentials[:access_key_id], 
+                                                  :password=> response.credentials[:secret_access_key], 
+                                                  :comment => response.expires_at.to_i.to_s)
+    temp_token = keychain.generic_passwords.create(:label => "#{item_name} token",
+                                                  :account => "#{response.credentials[:access_key_id]}_token", 
+                                                  :password=> response.credentials[:session_token], 
+                                                  :comment => response.expires_at.to_i.to_s)
+
+    puts "MultiFactorAuthentication succeeded, expiration is #{response.expires_at}"
+  rescue AWS::STS::Errors::AccessDenied => e
+    puts e.to_s
+  end
+
+when 'env'
+  item, token = get_item_from_args_for_command('shell')
+  puts "export AWS_ACCESS_KEY_ID=\"#{item.attributes[:account]}\""
+  puts "export AWS_ACCESS_KEY=\"#{item.attributes[:account]}\""
+  puts "export AWS_SECRET_ACCESS_KEY=\"#{item.password}\""
+  puts "export AWS_SECRET_KEY=\"#{item.password}\""
+  puts "export RPROMPT=\"(aws #{item.attributes[:label]})\""
+  puts "export AWS_CREDS_NAME=\"#{item.attributes[:label]}\""
+  if token
+    puts "export AWS_SECURITY_TOKEN=\"#{token.password}\""
+  end
 
 when 'shell'
   if ENV['AWS_CREDS_NAME']
@@ -113,17 +185,21 @@ when 'shell'
     exit 1
   end
 
-  item = get_item_from_args_for_command('shell')
+  item, token = get_item_from_args_for_command('shell')
   aws_env = {}
   aws_env['AWS_ACCESS_KEY_ID'] = aws_env['AWS_ACCESS_KEY'] = item.attributes[:account]
   aws_env['AWS_SECRET_ACCESS_KEY'] = aws_env['AWS_SECRET_KEY'] = item.password
   aws_env['AWS_CREDS_NAME'] = item.attributes[:label]
+  if token
+    aws_env['AWS_SECURITY_TOKEN'] = token.password
+  end
+
   aws_env['RPROMPT'] = "(aws #{item.attributes[:label]})" # zsh only
 
   exec(aws_env, ENV['SHELL'])
 
 else
   puts "Usage: #{$0} <command> <arguments>"
-  puts "  Commands: init, ls, add, cat, rm, shell"
+  puts "  Commands: init, ls, add, cat, env, mfa, rm, shell"
 end
 
