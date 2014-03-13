@@ -194,9 +194,13 @@ when 'shell'
     aws_env['AWS_SECURITY_TOKEN'] = token.password
   end
 
-  aws_env['RPROMPT'] = "(aws #{item.attributes[:label]})" # zsh only
+  if ARGV.empty?
+    aws_env['RPROMPT'] = "(aws #{item.attributes[:label]})" # zsh only
 
-  exec(aws_env, ENV['SHELL'])
+    exec(aws_env, ENV['SHELL'])
+  else
+    system(aws_env, *ARGV)
+  end
 
 else
   puts "Usage: #{$0} <command> <arguments>"
