@@ -83,8 +83,8 @@ when 'init'
   name = ask("Name for AWS keychain (default: 'aws'): ")
   name = "aws" if name == ""
 
-  shell_arguments = ask("Shell arguments (default: ''): ")
-  shell_arguments = "" if shell_arguments == ""
+  shell_arguments = ask("Shell arguments (default: '--login'): ")
+  shell_arguments = "--login" if shell_arguments == ""
 
   puts "The OS will now ask you for a password to protect your keychain. Choose wisely."
   keychain = Keychain.create(name)
