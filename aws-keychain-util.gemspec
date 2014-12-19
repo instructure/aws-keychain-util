@@ -4,7 +4,7 @@ $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 
 Gem::Specification.new do |gem|
   gem.name          = "aws-keychain-util"
-  gem.version       = '0.0.9'
+  gem.version       = '0.0.10'
   gem.authors       = ["Zach Wily"]
   gem.email         = ["zach@zwily.com"]
   gem.description   = %q{Helps manage a keychain of AWS credentials on OS X.}
@@ -18,5 +18,5 @@ Gem::Specification.new do |gem|
 
   gem.add_dependency('ruby-keychain')
   gem.add_dependency('highline')
-  gem.add_dependency('aws-sdk')
+  gem.add_dependency('aws-sdk-v1')
 end
