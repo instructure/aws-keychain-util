@@ -204,7 +204,7 @@ when 'shell'
     if prefs['shell_arguments']
       exec(aws_env, ENV['SHELL'], prefs['shell_arguments'])
     else
-      exec(aws_env)
+      exec(aws_env, ENV['SHELL'])
     end
   else
     exec(aws_env, *ARGV)
