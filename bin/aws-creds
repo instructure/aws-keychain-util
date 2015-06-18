@@ -198,7 +198,7 @@ when 'shell'
   aws_env['AWS_SECRET_ACCESS_KEY'] = aws_env['AWS_SECRET_KEY'] = item.password
   aws_env['AWS_CREDS_NAME'] = item.attributes[:label]
   if token
-    aws_env['AWS_SECURITY_TOKEN'] = token.password
+    aws_env['AWS_SECURITY_TOKEN'] = aws_env['AWS_SESSION_TOKEN'] = token.password
   end
 
   if ARGV.empty?
