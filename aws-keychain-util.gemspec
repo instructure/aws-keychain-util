@@ -18,5 +18,5 @@ Gem::Specification.new do |gem|
 
   gem.add_dependency('ruby-keychain', '~> 0.2.0')
   gem.add_dependency('highline')
-  gem.add_dependency('aws-sdk-v1')
+  gem.add_dependency('aws-sdk')
 end

@@ -69,7 +69,8 @@ your .bashrc or .zshrc
 To automatically grab AWS credentials from your keychain when using
 the aws-sdk gem, add the following code:
 
-    AWS.config(:credential_provider => AwsKeychainUtil::CredentialProvider.new('<name>', 'keychain name'))
+    require 'aws-keychain-util/credential_provider'
+    Aws.config[:credentials] = AwsKeychainUtil::CredentialProvider.new('<name>', 'keychain name')
 
 To remove an item from your aws keychain:
 
