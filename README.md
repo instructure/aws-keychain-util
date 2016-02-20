@@ -53,10 +53,18 @@ you can source into your shell:
 
     $ aws-creds env <name>
 
+If you want to load the credentials into your *current* shell, add a function
+like this to your `.bashrc`:
+
+    aws-shell() { eval "$(/usr/bin/env aws-creds env $@)"; }
+
+Then, you can use `aws-shell <name>`. This can be slightly more convenient as
+you keep shell history around.
+
 To always load the given environment in your shell, add the following to
 your .bashrc or .zshrc
 
-    source `aws-creds env <name>`
+    eval "$(aws-creds env <name>)"
 
 To automatically grab AWS credentials from your keychain when using
 the aws-sdk gem, add the following code:
