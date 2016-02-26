@@ -148,19 +148,12 @@ when 'add'
 
 when 'add-role'
   keychain = load_keychain
-  name     = ask('login account name: ')
-
-  item = get_item(name)
-  unless item
-    puts "could not find account \"#{name}\""
-    exit 1
-  end
-
+  item, token = get_item_from_args_for_command('add-role')
   role     = ask('         role name: ')
   arn      = ask('          role arn: ')
 
-  item = keychain.generic_passwords.create(
-    label: "#{name} role #{role}",
+  keychain.generic_passwords.create(
+    label: "#{item.attributes[:label]} role #{role}",
     account: role,
     password: '',
     comment: arn
@@ -172,7 +165,7 @@ when 'assume-role'
   role_name = ARGV.shift
 
   unless name
-    puts 'Usage: aws-creds assume-role <item-name> <role-name>'
+    puts 'Usage: aws-creds assume-role <name> <role-name>'
     exit 1
   end
 
@@ -228,7 +221,7 @@ when 'mfa'
   item_name = ARGV.shift
   code = ARGV.shift
   if !item_name || !code
-    puts 'Usage: aws-creds mfa <item-name> <mfa-code>'
+    puts 'Usage: aws-creds mfa <name> <mfa-code>'
     exit 1
   end
 
