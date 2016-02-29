@@ -34,6 +34,20 @@ def get_item(name)
   load_keychain.generic_passwords.where(label: name).first
 end
 
+def delete_expired(key, token)
+  expires_at = Time.at(key.attributes[:comment].to_i)
+  if expires_at < Time.now
+    delete_pair(key, token, '# Removing expired STS credentials')
+  end
+  [key, token]
+end
+
+def delete_pair(key, token, message)
+  puts message
+  token.delete if token
+  key.delete if key
+end
+
 def get_name_from_args_for_command(command)
   if ARGV.empty?
     puts "Usage: #{$PROGRAM_NAME} #{command} <name>"
@@ -47,33 +61,11 @@ def get_item_from_args_for_command(command)
 
   role_key = get_item("#{name} role-key")
   role_token = get_item("#{name} role-token")
-  if role_key
-    if role_key.attributes[:comment]
-      expires_at = Time.at(role_key.attributes[:comment].to_i)
-      if expires_at < Time.now
-        puts '# Removing expired STS role credentials'
-        role_token.delete
-        role_token = nil
-        role_key.delete
-        role_key = nil
-      end
-    end
-  end
+  role_key, role_token = delete_expired(role_key, role_token) if role_key
 
   item_mfa = get_item("#{name} mfa")
   item_token = get_item("#{name} token")
-  if item_mfa
-    if item_mfa.attributes[:comment]
-      expires_at = Time.at(item_mfa.attributes[:comment].to_i)
-      if expires_at < Time.now
-        puts '# Removing expired STS credentials'
-        item_token.delete
-        item_token = nil
-        item_mfa.delete
-        item_mfa = nil
-      end
-    end
-  end
+  item_mfa, item_token = delete_expired(item_mfa, item_token) if item_mfa
 
   if role_key && role_token
     puts '# Using temporary STS role credentials'
@@ -146,14 +138,31 @@ when 'add'
     comment: arn
   )
 
+when 'cat'
+  item, token = get_item_from_args_for_command('cat')
+  puts "AWS_ACCESS_KEY_ID=#{item.attributes[:account]}"
+  puts "AWS_SECRET_ACCESS_KEY=#{item.password}"
+  puts "AWS_SECURITY_TOKEN=#{token.password}" if token
+
+when 'rm'
+  item, token = get_item_from_args_for_command('rm')
+  delete_pair(item, token, '# Removing credentials')
+
 when 'add-role'
   keychain = load_keychain
-  item, token = get_item_from_args_for_command('add-role')
+  name = ARGV.shift
+  item = get_item(name)
+
+  unless item
+    puts "cannot find item for #{name}"
+    exit 1
+  end
+
   role     = ask('         role name: ')
   arn      = ask('          role arn: ')
 
   keychain.generic_passwords.create(
-    label: "#{item.attributes[:label]} role #{role}",
+    label: "#{name} role #{role}",
     account: role,
     password: '',
     comment: arn
@@ -163,20 +172,22 @@ when 'assume-role'
   keychain = load_keychain
   name = ARGV.shift
   role_name = ARGV.shift
+  code = ARGV.shift
 
   unless name
-    puts 'Usage: aws-creds assume-role <name> <role-name>'
+    puts 'Usage: aws-creds assume-role <name> <role-name> [<mfa>]'
     exit 1
   end
 
-  if 'none' == role_name || role_name.nil?
-    role_key = get_item("#{name} role-key")
-    role_key.delete if role_key
-    role_token = get_item("#{name} role-token")
-    role_token.delete if role_token
-    puts 'AssumeRoleAuthentication removed'
-    exit 0
-  end
+  role_key = get_item("#{name} role-key")
+  role_token = get_item("#{name} role-token")
+  delete_pair(role_key, role_token, '# Removing STS role credentials') if role_key
+
+  sts_item = get_item("#{name} mfa")
+  sts_token = get_item("#{name} token")
+  delete_pair(sts_item, sts_token, '# Removing STS credentials') if sts_item
+
+  exit 0 if 'none' == role_name || role_name.nil?
 
   item = get_item(name)
   item_role = get_item("#{name} role #{role_name}")
@@ -189,7 +200,11 @@ when 'assume-role'
   sts = Aws::STS::Client.new(access_key_id: item.attributes[:account], secret_access_key: item.password)
 
   begin
-      response = sts.assume_role(duration_seconds: (60 * 60 * 1), role_arn: item_role.attributes[:comment], role_session_name: item_role.attributes[:account])
+      if code
+        response = sts.assume_role(duration_seconds: (60 * 60 * 1), role_arn: item_role.attributes[:comment], role_session_name: item_role.attributes[:account], token_code: code)
+      else
+        response = sts.assume_role(duration_seconds: (60 * 60 * 1), role_arn: item_role.attributes[:comment], role_session_name: item_role.attributes[:account])
+      end
       keychain.generic_passwords.create(label: "#{name} role-key",
                                         account: response.credentials[:access_key_id],
                                         password: response.credentials[:secret_access_key],
@@ -204,18 +219,6 @@ when 'assume-role'
       puts e.to_s
     end
 
-# aws sts assume-role --role-arn "arn:aws:iam::123456789012:role/RoleName" --role-session-name "MyRoleSessionName"
-
-when 'cat'
-  item, token = get_item_from_args_for_command('cat')
-  puts "AWS_ACCESS_KEY_ID=#{item.attributes[:account]}"
-  puts "AWS_SECRET_ACCESS_KEY=#{item.password}"
-  puts "AWS_SECURITY_TOKEN=#{token.password}" if token
-
-when 'rm'
-  item, token = get_item_from_args_for_command('rm')
-  item.delete
-
 when 'mfa'
   keychain = load_keychain
   item_name = ARGV.shift
@@ -227,19 +230,11 @@ when 'mfa'
 
   role_key = get_item("#{item_name} role-key")
   role_token = get_item("#{item_name} role-token")
-  if role_key
-    puts 'Removing existing STS role credentials'
-    role_key.delete
-    role_token.delete if role_token
-  end
+  delete_pair(role_key, role_token, '# Removing STS role credentials')
 
   sts_item = get_item("#{item_name} mfa")
   sts_token = get_item("#{item_name} token")
-  if sts_item
-    puts 'Removing existing STS credentials'
-    sts_item.delete
-    sts_token.delete if sts_token
-  end
+  delete_pair(sts_item, sts_token, '# Removing STS credentials')
 
   item, token = get_item(item_name)
   sts = Aws::STS::Client.new(access_key_id: item.attributes[:account],
