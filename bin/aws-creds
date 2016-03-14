@@ -38,6 +38,8 @@ def delete_expired(key, token)
   expires_at = Time.at(key.attributes[:comment].to_i)
   if expires_at < Time.now
     delete_pair(key, token, '# Removing expired STS credentials')
+    key = nil
+    token = nil
   end
   [key, token]
 end
@@ -54,6 +56,15 @@ def get_name_from_args_for_command(command)
     exit 1
   end
   ARGV.shift
+end
+
+def get_valid_item(name)
+  item = get_item(name)
+  unless item
+    puts "Could not find item with name #{name}"
+    exit 1
+  end
+  item
 end
 
 def get_item_from_args_for_command(command)
@@ -77,11 +88,7 @@ def get_item_from_args_for_command(command)
     return item_mfa, item_token
   end
 
-  item = get_item(name)
-  unless item
-    puts "Could not find item with name #{name}"
-    exit 1
-  end
+  item = get_valid_item(name)
   [item, nil]
 end
 
@@ -151,7 +158,7 @@ when 'rm'
 when 'add-role'
   keychain = load_keychain
   name = ARGV.shift
-  item = get_item(name)
+  item = get_valid_item(name)
 
   unless item
     puts "cannot find item for #{name}"
@@ -175,9 +182,11 @@ when 'assume-role'
   code = ARGV.shift
 
   unless name
-    puts 'Usage: aws-creds assume-role <name> <role-name> [<mfa>]'
+    puts "Usage: #{$PROGRAM_NAME} assume-role <name> <role-name> [<mfa>]"
     exit 1
   end
+
+  item = get_valid_item(name)
 
   role_key = get_item("#{name} role-key")
   role_token = get_item("#{name} role-token")
@@ -189,13 +198,7 @@ when 'assume-role'
 
   exit 0 if 'none' == role_name || role_name.nil?
 
-  item = get_item(name)
-  item_role = get_item("#{name} role #{role_name}")
-
-  if !item || !item_role
-    puts 'cannot find item'
-    exit 1
-  end
+  item_role = get_valid_item("#{name} role #{role_name}")
 
   sts = Aws::STS::Client.new(access_key_id: item.attributes[:account], secret_access_key: item.password)
 
@@ -212,7 +215,7 @@ when 'assume-role'
       keychain.generic_passwords.create(label: "#{name} role-token",
                                         account: "#{response.credentials[:access_key_id]}_token",
                                         password: response.credentials[:session_token],
-                                        comment: role_name)
+                                        comment: "#{name} role #{role_name}")
 
       puts "AssumeRoleAuthentication succeeded, expiration is #{response.credentials[:expiration]}"
     rescue Aws::STS::Errors::AccessDenied => e
@@ -224,7 +227,7 @@ when 'mfa'
   item_name = ARGV.shift
   code = ARGV.shift
   if !item_name || !code
-    puts 'Usage: aws-creds mfa <name> <mfa-code>'
+    puts "Usage: #{$PROGRAM_NAME} mfa <name> <mfa-code>"
     exit 1
   end
 
@@ -250,7 +253,7 @@ when 'mfa'
     keychain.generic_passwords.create(label: "#{item_name} token",
                                       account: "#{response.credentials[:access_key_id]}_token",
                                       password: response.credentials[:session_token],
-                                      comment: response.credentials[:expiration].to_i.to_s)
+                                      comment: "#{item_name} mfa")
 
     puts "MultiFactorAuthentication succeeded, expiration is #{response.credentials[:expiration]}"
   rescue Aws::STS::Errors::AccessDenied => e
@@ -264,11 +267,16 @@ when 'env'
   puts "export AWS_ACCESS_KEY=\"#{item.attributes[:account]}\""
   puts "export AWS_SECRET_ACCESS_KEY=\"#{key}\""
   puts "export AWS_SECRET_KEY=\"#{key}\""
-  puts "export RPROMPT=\"(aws #{item.attributes[:label]})\""
-  puts "export AWS_CREDS_NAME=\"#{item.attributes[:label]}\""
   if token
+    puts "export RPROMPT=\"(aws #{token.attributes[:comment]})\""
+    puts "export AWS_CREDS_NAME=\"#{token.attributes[:comment]}\""
     puts "export AWS_SECURITY_TOKEN=\"#{token.password}\""
     puts "export AWS_SESSION_TOKEN=\"#{token.password}\""
+  else
+    puts "export RPROMPT=\"(aws #{item.attributes[:label]})\""
+    puts "export AWS_CREDS_NAME=\"#{item.attributes[:label]}\""
+    puts 'unset AWS_SECURITY_TOKEN'
+    puts 'unset AWS_SESSION_TOKEN'
   end
 
 when 'shell'
@@ -283,13 +291,16 @@ when 'shell'
   aws_env = {}
   aws_env['AWS_ACCESS_KEY_ID'] = aws_env['AWS_ACCESS_KEY'] = item.attributes[:account]
   aws_env['AWS_SECRET_ACCESS_KEY'] = aws_env['AWS_SECRET_KEY'] = item.password
-  aws_env['AWS_CREDS_NAME'] = item.attributes[:label]
   if token
+    aws_env['AWS_CREDS_NAME'] = token.attributes[:comment]
     aws_env['AWS_SECURITY_TOKEN'] = aws_env['AWS_SESSION_TOKEN'] = token.password
+  else
+    aws_env['AWS_CREDS_NAME'] = item.attributes[:label]
   end
 
   if ARGV.empty?
     aws_env['RPROMPT'] = "(aws #{item.attributes[:label]})" # zsh only
+
     if prefs['shell_arguments']
       exec(aws_env, ENV['SHELL'], prefs['shell_arguments'])
     else
