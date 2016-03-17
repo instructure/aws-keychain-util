@@ -11,6 +11,13 @@ require 'json'
 require 'aws_keychain_util'
 require 'aws-sdk'
 
+trap('SIGINT') do
+  puts
+  $stderr.puts "\nExecution aborted."
+  puts
+  exit 1
+end
+
 def ask(question)
   HighLine.new.ask(question)
 end
@@ -157,13 +164,8 @@ when 'rm'
 
 when 'add-role'
   keychain = load_keychain
-  name = ARGV.shift
+  name = get_name_from_args_for_command('add-role')
   item = get_valid_item(name)
-
-  unless item
-    puts "cannot find item for #{name}"
-    exit 1
-  end
 
   role     = ask('         role name: ')
   arn      = ask('          role arn: ')
@@ -204,9 +206,15 @@ when 'assume-role'
 
   begin
       if code
-        response = sts.assume_role(duration_seconds: (60 * 60 * 1), role_arn: item_role.attributes[:comment], role_session_name: item_role.attributes[:account], token_code: code)
+        response = sts.assume_role(duration_seconds: (60 * 60 * 1),
+                                   role_arn: item_role.attributes[:comment],
+                                   role_session_name: item_role.attributes[:account],
+                                   serial_number: item.attributes[:comment],
+                                   token_code: code)
       else
-        response = sts.assume_role(duration_seconds: (60 * 60 * 1), role_arn: item_role.attributes[:comment], role_session_name: item_role.attributes[:account])
+        response = sts.assume_role(duration_seconds: (60 * 60 * 1),
+                                   role_arn: item_role.attributes[:comment],
+                                   role_session_name: item_role.attributes[:account])
       end
       keychain.generic_passwords.create(label: "#{name} role-key",
                                         account: response.credentials[:access_key_id],
