@@ -9,7 +9,7 @@ require 'highline'
 require 'keychain'
 require 'json'
 require 'aws-keychain-util'
-require 'aws-sdk-v1'
+require 'aws-sdk'
 
 def ask(question)
   HighLine.new.ask(question)
@@ -153,20 +153,20 @@ when 'mfa'
   end
 
   item, token = get_item(item_name)
-  sts = AWS::STS.new(:access_key_id => item.attributes[:account], :secret_access_key => item.password)
+  sts = Aws::STS::Client.new(:access_key_id => item.attributes[:account], :secret_access_key => item.password)
   begin
-    response = sts.new_session(:duration => (60 * 60 * 12), :serial_number => item.attributes[:comment], :token_code => code)
+    response = sts.get_session_token(:duration_seconds => (60 * 60 * 12), :serial_number => item.attributes[:comment], :token_code => code)
     temp_item = keychain.generic_passwords.create(:label => "#{item_name} mfa",
                                                   :account => response.credentials[:access_key_id],
                                                   :password=> response.credentials[:secret_access_key],
-                                                  :comment => response.expires_at.to_i.to_s)
+                                                  :comment => response.credentials[:expiration].to_i.to_s)
     temp_token = keychain.generic_passwords.create(:label => "#{item_name} token",
                                                   :account => "#{response.credentials[:access_key_id]}_token",
                                                   :password=> response.credentials[:session_token],
-                                                  :comment => response.expires_at.to_i.to_s)
+                                                  :comment => response.credentials[:expiration].to_i.to_s)
 
-    puts "MultiFactorAuthentication succeeded, expiration is #{response.expires_at}"
-  rescue AWS::STS::Errors::AccessDenied => e
+    puts "MultiFactorAuthentication succeeded, expiration is #{response.credentials[:expiration]}"
+  rescue Aws::STS::Errors::AccessDenied => e
     puts e.to_s
   end
 
