@@ -1,5 +1,6 @@
+# Utility class to hold runtime config.
 module AwsKeychainUtil
-  PREFS_FILE = File.expand_path "~/.aws-keychain-util"
+  PREFS_FILE = File.expand_path '~/.aws-keychain-util'
 
   def self.load_keychain
     name = prefs['aws_keychain_name']

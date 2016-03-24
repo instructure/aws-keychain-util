@@ -3,13 +3,15 @@ require 'keychain'
 require 'aws-keychain-util'
 
 module AwsKeychainUtil
+  # class to automatically grab AWS credentials from your keychain
   class CredentialProvider
     include Aws::CredentialProvider
 
     attr_reader :item, :keychain
 
     def initialize(item = 'AWS', keychain = nil)
-      @item, @keychain = item, keychain
+      @item = item
+      @keychain = keychain
     end
 
     def credentials
