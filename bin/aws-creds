@@ -1,15 +1,22 @@
 #!/usr/bin/env ruby
 
-if $0 == "bin/aws-creds"
-  $LOAD_PATH.unshift(File.expand_path(File.dirname(__FILE__)) + "/../lib")
+if $PROGRAM_NAME == 'bin/aws-creds'
+  $LOAD_PATH.unshift(File.expand_path(File.dirname(__FILE__)) + '/../lib')
 end
 
 require 'rubygems'
 require 'highline'
 require 'keychain'
 require 'json'
-require 'aws-keychain-util'
+require 'aws_keychain_util'
 require 'aws-sdk'
+
+trap('SIGINT') do
+  puts
+  $stderr.puts "\nExecution aborted."
+  puts
+  exit 1
+end
 
 def ask(question)
   HighLine.new.ask(question)
@@ -22,53 +29,74 @@ end
 def load_keychain
   keychain = AwsKeychainUtil.load_keychain
   if keychain && keychain.lock_interval > 300
-    $stderr.puts "Your keychain is *not* set to lock automatically in under five minutes. This could be dangerous."
-    if !File.exist? AwsKeychainUtil::PREFS_FILE
-      $stderr.puts "You should probably run `#{$0} init` to create a new, secure keychain."
+    $stderr.puts 'Your keychain is *not* set to lock automatically in under five minutes. This could be dangerous.'
+    unless File.exist? AwsKeychainUtil::PREFS_FILE
+      $stderr.puts "You should probably run `#{$PROGRAM_NAME} init` to create a new, secure keychain."
     end
   end
   keychain
 end
 
 def get_item(name)
-  load_keychain.generic_passwords.where(:label => name).first
+  load_keychain.generic_passwords.where(label: name).first
+end
+
+def delete_expired(key, token)
+  expires_at = Time.at(key.attributes[:comment].to_i)
+  if expires_at < Time.now
+    delete_pair(key, token, '# Removing expired STS credentials')
+    key = nil
+    token = nil
+  end
+  [key, token]
+end
+
+def delete_pair(key, token, message)
+  puts message
+  token.delete if token
+  key.delete if key
 end
 
 def get_name_from_args_for_command(command)
-  if ARGV.length < 1
-    puts "Usage: #{$0} #{command} <name>"
+  if ARGV.empty?
+    puts "Usage: #{$PROGRAM_NAME} #{command} <name>"
     exit 1
   end
   ARGV.shift
 end
 
-def get_item_from_args_for_command(command)
-  name = get_name_from_args_for_command(command)
-  item_mfa = get_item("#{name} mfa")
-  item_token = get_item("#{name} token")
-  if item_mfa
-    if item_mfa.attributes[:comment]
-      expires_at = Time.at(item_mfa.attributes[:comment].to_i)
-      if expires_at < Time.now
-          puts "# Removing expired STS credentials"
-          item_token.delete
-          item_token = nil
-          item_mfa.delete
-          item_mfa = nil
-      end
-    end
-  end
-  if item_mfa and item_token
-    puts "# Using temporary STS credentials"
-    return item_mfa, item_token
-  end
-
+def get_valid_item(name)
   item = get_item(name)
   unless item
     puts "Could not find item with name #{name}"
     exit 1
   end
-  return item, nil
+  item
+end
+
+def get_item_from_args_for_command(command)
+  name = get_name_from_args_for_command(command)
+
+  role_key = get_item("#{name} role-key")
+  role_token = get_item("#{name} role-token")
+  role_key, role_token = delete_expired(role_key, role_token) if role_key
+
+  item_mfa = get_item("#{name} mfa")
+  item_token = get_item("#{name} token")
+  item_mfa, item_token = delete_expired(item_mfa, item_token) if item_mfa
+
+  if role_key && role_token
+    puts '# Using temporary STS role credentials'
+    return role_key, role_token
+  end
+
+  if item_mfa && item_token
+    puts '# Using temporary STS credentials'
+    return item_mfa, item_token
+  end
+
+  item = get_valid_item(name)
+  [item, nil]
 end
 
 command = ARGV.shift
@@ -81,89 +109,159 @@ when 'init'
   end
 
   name = ask("Name for AWS keychain (default: 'aws'): ")
-  name = "aws" if name == ""
+  name = 'aws' if name == ''
 
   shell_arguments = ask("Shell arguments (default: '--login'): ")
-  shell_arguments = "--login" if shell_arguments == ""
+  shell_arguments = '--login' if shell_arguments == ''
 
-  puts "The OS will now ask you for a password to protect your keychain. Choose wisely."
+  puts 'The OS will now ask you for a password to protect your keychain. Choose wisely.'
   keychain = Keychain.create(name)
   keychain.lock_interval = 300
   keychain.lock_on_sleep = true
 
   $prefs = { 'aws_keychain_name' => name, 'shell_arguments' => shell_arguments }
-  File.new(AwsKeychainUtil::PREFS_FILE, "w").write JSON.dump($prefs)
+  File.new(AwsKeychainUtil::PREFS_FILE, 'w').write JSON.dump($prefs)
 
-  puts "Your AWS keychain has been created and configured to auto-lock after"
-  puts "5 minutes, and when sleeping. You can change those options in"
-  puts "Keychain Access."
+  puts 'Your AWS keychain has been created and configured to auto-lock after'
+  puts '5 minutes, and when sleeping. You can change those options in'
+  puts 'Keychain Access.'
   puts
-  puts "You can now add accounts to the keychain with:"
-  puts "    #{$0} add"
+  puts 'You can now add accounts to the keychain with:'
+  puts "    #{$PROGRAM_NAME} add"
 
 when 'ls'
   keychain = load_keychain
-  keychain.generic_passwords.all.sort {|a,b|
+  items = keychain.generic_passwords.all.sort do |a, b|
     a.attributes[:label] <=> b.attributes[:label]
-  }.each do |item|
+  end
+  items.each do |item|
     puts "  #{item.attributes[:label]}"
   end
 
 when 'add'
   keychain = load_keychain
-  name     =        ask("      account name: ")
-  account  =        ask("     access key id: ")
-  password = ask_secure(" secret_access_key: ")
-  arn      =        ask("           mfa arn: ")
+  name     =        ask('      account name: ')
+  account  =        ask('     access key id: ')
+  password = ask_secure(' secret_access_key: ')
+  arn      =        ask('           mfa arn: ')
 
   item = keychain.generic_passwords.create(
-    :label => name,
-    :account => account,
-    :password => password,
-    :comment => arn
+    label: name,
+    account: account,
+    password: password,
+    comment: arn
   )
 
 when 'cat'
   item, token = get_item_from_args_for_command('cat')
   puts "AWS_ACCESS_KEY_ID=#{item.attributes[:account]}"
   puts "AWS_SECRET_ACCESS_KEY=#{item.password}"
-  if token
-    puts "AWS_SECURITY_TOKEN=#{token.password}"
-  end
+  puts "AWS_SECURITY_TOKEN=#{token.password}" if token
 
 when 'rm'
   item, token = get_item_from_args_for_command('rm')
-  item.delete
+  delete_pair(item, token, '# Removing credentials')
+
+when 'add-role'
+  keychain = load_keychain
+  name = get_name_from_args_for_command('add-role')
+  item = get_valid_item(name)
+
+  role     = ask('         role name: ')
+  arn      = ask('          role arn: ')
+
+  keychain.generic_passwords.create(
+    label: "#{name} role #{role}",
+    account: role,
+    password: '',
+    comment: arn
+  )
+
+when 'assume-role'
+  keychain = load_keychain
+  name = ARGV.shift
+  role_name = ARGV.shift
+  code = ARGV.shift
+
+  unless name
+    puts "Usage: #{$PROGRAM_NAME} assume-role <name> <role-name> [<mfa>]"
+    exit 1
+  end
+
+  item = get_valid_item(name)
+
+  role_key = get_item("#{name} role-key")
+  role_token = get_item("#{name} role-token")
+  delete_pair(role_key, role_token, '# Removing STS role credentials') if role_key
+
+  sts_item = get_item("#{name} mfa")
+  sts_token = get_item("#{name} token")
+  delete_pair(sts_item, sts_token, '# Removing STS credentials') if sts_item
+
+  exit 0 if 'none' == role_name || role_name.nil?
+
+  item_role = get_valid_item("#{name} role #{role_name}")
+
+  sts = Aws::STS::Client.new(access_key_id: item.attributes[:account], secret_access_key: item.password)
+
+  begin
+      if code
+        response = sts.assume_role(duration_seconds: (60 * 60 * 1),
+                                   role_arn: item_role.attributes[:comment],
+                                   role_session_name: item_role.attributes[:account],
+                                   serial_number: item.attributes[:comment],
+                                   token_code: code)
+      else
+        response = sts.assume_role(duration_seconds: (60 * 60 * 1),
+                                   role_arn: item_role.attributes[:comment],
+                                   role_session_name: item_role.attributes[:account])
+      end
+      keychain.generic_passwords.create(label: "#{name} role-key",
+                                        account: response.credentials[:access_key_id],
+                                        password: response.credentials[:secret_access_key],
+                                        comment: response.credentials[:expiration].to_i.to_s)
+      keychain.generic_passwords.create(label: "#{name} role-token",
+                                        account: "#{response.credentials[:access_key_id]}_token",
+                                        password: response.credentials[:session_token],
+                                        comment: "#{name} role #{role_name}")
+
+      puts "AssumeRoleAuthentication succeeded, expiration is #{response.credentials[:expiration]}"
+    rescue Aws::STS::Errors::AccessDenied => e
+      puts e.to_s
+    end
 
 when 'mfa'
   keychain = load_keychain
   item_name = ARGV.shift
   code = ARGV.shift
-  if not item_name or not code
-    puts "Usage: aws-creds mfa <item-name> <mfa-code>"
-    exit(1)
+  if !item_name || !code
+    puts "Usage: #{$PROGRAM_NAME} mfa <name> <mfa-code>"
+    exit 1
   end
+
+  role_key = get_item("#{item_name} role-key")
+  role_token = get_item("#{item_name} role-token")
+  delete_pair(role_key, role_token, '# Removing STS role credentials')
 
   sts_item = get_item("#{item_name} mfa")
   sts_token = get_item("#{item_name} token")
-  if sts_item
-    puts "Removing existing STS credentials"
-    sts_item.delete
-    sts_token.delete if sts_token
-  end
+  delete_pair(sts_item, sts_token, '# Removing STS credentials')
 
   item, token = get_item(item_name)
-  sts = Aws::STS::Client.new(:access_key_id => item.attributes[:account], :secret_access_key => item.password)
+  sts = Aws::STS::Client.new(access_key_id: item.attributes[:account],
+                             secret_access_key: item.password)
   begin
-    response = sts.get_session_token(:duration_seconds => (60 * 60 * 12), :serial_number => item.attributes[:comment], :token_code => code)
-    temp_item = keychain.generic_passwords.create(:label => "#{item_name} mfa",
-                                                  :account => response.credentials[:access_key_id],
-                                                  :password=> response.credentials[:secret_access_key],
-                                                  :comment => response.credentials[:expiration].to_i.to_s)
-    temp_token = keychain.generic_passwords.create(:label => "#{item_name} token",
-                                                  :account => "#{response.credentials[:access_key_id]}_token",
-                                                  :password=> response.credentials[:session_token],
-                                                  :comment => response.credentials[:expiration].to_i.to_s)
+    response = sts.get_session_token(duration_seconds: (60 * 60 * 12),
+                                     serial_number: item.attributes[:comment],
+                                     token_code: code)
+    keychain.generic_passwords.create(label: "#{item_name} mfa",
+                                      account: response.credentials[:access_key_id],
+                                      password: response.credentials[:secret_access_key],
+                                      comment: response.credentials[:expiration].to_i.to_s)
+    keychain.generic_passwords.create(label: "#{item_name} token",
+                                      account: "#{response.credentials[:access_key_id]}_token",
+                                      password: response.credentials[:session_token],
+                                      comment: "#{item_name} mfa")
 
     puts "MultiFactorAuthentication succeeded, expiration is #{response.credentials[:expiration]}"
   rescue Aws::STS::Errors::AccessDenied => e
@@ -171,17 +269,22 @@ when 'mfa'
   end
 
 when 'env'
-  item, token = get_item_from_args_for_command('shell')
+  item, token = get_item_from_args_for_command('env')
   key = item.password
   puts "export AWS_ACCESS_KEY_ID=\"#{item.attributes[:account]}\""
   puts "export AWS_ACCESS_KEY=\"#{item.attributes[:account]}\""
   puts "export AWS_SECRET_ACCESS_KEY=\"#{key}\""
   puts "export AWS_SECRET_KEY=\"#{key}\""
-  puts "export RPROMPT=\"(aws #{item.attributes[:label]})\""
-  puts "export AWS_CREDS_NAME=\"#{item.attributes[:label]}\""
   if token
+    puts "export RPROMPT=\"(aws #{token.attributes[:comment]})\""
+    puts "export AWS_CREDS_NAME=\"#{token.attributes[:comment]}\""
     puts "export AWS_SECURITY_TOKEN=\"#{token.password}\""
     puts "export AWS_SESSION_TOKEN=\"#{token.password}\""
+  else
+    puts "export RPROMPT=\"(aws #{item.attributes[:label]})\""
+    puts "export AWS_CREDS_NAME=\"#{item.attributes[:label]}\""
+    puts 'unset AWS_SECURITY_TOKEN'
+    puts 'unset AWS_SESSION_TOKEN'
   end
 
 when 'shell'
@@ -196,13 +299,16 @@ when 'shell'
   aws_env = {}
   aws_env['AWS_ACCESS_KEY_ID'] = aws_env['AWS_ACCESS_KEY'] = item.attributes[:account]
   aws_env['AWS_SECRET_ACCESS_KEY'] = aws_env['AWS_SECRET_KEY'] = item.password
-  aws_env['AWS_CREDS_NAME'] = item.attributes[:label]
   if token
+    aws_env['AWS_CREDS_NAME'] = token.attributes[:comment]
     aws_env['AWS_SECURITY_TOKEN'] = aws_env['AWS_SESSION_TOKEN'] = token.password
+  else
+    aws_env['AWS_CREDS_NAME'] = item.attributes[:label]
   end
 
   if ARGV.empty?
     aws_env['RPROMPT'] = "(aws #{item.attributes[:label]})" # zsh only
+
     if prefs['shell_arguments']
       exec(aws_env, ENV['SHELL'], prefs['shell_arguments'])
     else
@@ -213,6 +319,6 @@ when 'shell'
   end
 
 else
-  puts "Usage: #{$0} <command> <arguments>"
-  puts "  Commands: init, ls, add, cat, env, mfa, rm, shell"
+  puts "Usage: #{$PROGRAM_NAME} <command> <arguments>"
+  puts '  Commands: init, ls, add, add-role, assume-role, cat, env, mfa, rm, shell'
 end

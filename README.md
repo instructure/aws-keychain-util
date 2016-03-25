@@ -100,6 +100,27 @@ The tool also tracks mfa expiration, and automatically removes expired tokens wh
 or source your env.
 
 
+## AWS Assume Role credentials
+
+It's also possible assume a role that specifies a set of permissions that you can use to access
+AWS resources that you need for a limited time. The role can be in your own account or any other AWS account.
+
+For information about how to create and configure Roles, see
+ IAM Roles[Here](http://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_use.html)
+
+In order to configure a role run:
+
+     $ aws-creds add-role <name>
+
+Then to assume a role, you need to run:
+
+    $ aws-creds assume-role <name> <role-name>
+    
+Then you just need to either open a fresh shell for the `<name>` key or re-source your environment.
+
+The tool also tracks role expiration, and automatically removes expired tokens when you open a new shell 
+or source your env.
+
 ## Security
 
 Unfortunately, when Keychain whitelists either the `aws-creds` script
