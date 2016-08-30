@@ -4,12 +4,12 @@ $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 
 Gem::Specification.new do |gem|
   gem.name          = 'aws-keychain-util'
-  gem.version       = '0.0.14'
+  gem.version       = '0.0.15'
   gem.authors       = ['Zach Wily']
   gem.email         = ['zach@zwily.com']
   gem.description   = 'Helps manage a keychain of AWS credentials on OS X.'
   gem.summary       = 'Helps manage a keychain of AWS credentials on OS X.'
-  gem.homepage      = ''
+  gem.homepage      = 'https://github.com/instructure/aws-keychain-util'
 
   gem.files         = `git ls-files`.split($INPUT_RECORD_SEPARATOR)
   gem.executables   = gem.files.grep(%r{^bin/}).map { |f| File.basename(f) }
