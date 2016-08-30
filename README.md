@@ -121,6 +121,12 @@ Then you just need to either open a fresh shell for the `<name>` key or re-sourc
 The tool also tracks role expiration, and automatically removes expired tokens when you open a new shell 
 or source your env.
 
+## Open the Aws Console
+
+Once you have assumed a role you can open the AWS Console in your web browser by running:
+
+    $ aws-creds console <name>
+
 ## Security
 
 Unfortunately, when Keychain whitelists either the `aws-creds` script
