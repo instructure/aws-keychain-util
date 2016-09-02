@@ -78,6 +78,10 @@ the aws-sdk gem, add the following code:
     require 'aws-keychain-util/credential_provider'
     Aws.config[:credentials] = AwsKeychainUtil::CredentialProvider.new('<name>', 'keychain name')
 
+To open AWS Management Console in your web browser:
+
+    $ aws-creds console <name>
+
 To remove an item from your aws keychain:
 
     $ aws-creds rm <name>
@@ -126,12 +130,6 @@ Then you just need to either open a fresh shell for the `<name>` key or re-sourc
 
 The tool also tracks role expiration, and automatically removes expired tokens when you open a new shell 
 or source your env.
-
-## Open the Aws Console
-
-Once you have assumed a role you can open the AWS Console in your web browser by running:
-
-    $ aws-creds console <name>
 
 ## Security
 
