@@ -11,6 +11,7 @@ require 'json'
 require 'cgi'
 require 'aws_keychain_util'
 require 'aws-sdk'
+require 'open-uri'
 
 trap('SIGINT') do
   puts
@@ -317,30 +318,49 @@ when 'shell'
 
 when 'console'
   item, token = get_item_from_args_for_command('console')
-  unless token
-    puts 'Error: requires a valid session token,'
-    puts "try #{$PROGRAM_NAME} assume-role <name> <role-name> [<mfa-code>]"
-    exit 1
-  end
 
   console_url = 'https://console.aws.amazon.com/console/home'
   signin_url = 'https://signin.aws.amazon.com/federation'
-
-  session_json = {
-    sessionId: item.attributes[:account],
-    sessionKey: item.password,
-    sessionToken: token.password
+  policy_json = {
+    Version: '2012-10-17',
+    Statement: [{
+      Action: '*',
+      Resource: '*',
+      Effect: 'Allow'
+    }]
   }.to_json
 
-  get_signin_token_url = signin_url + '?Action=getSigninToken' \
-                         '&SessionDuration=' + (60 * 60 * 12).to_s +
-                         '&Session=' + CGI.escape(session_json)
+  if token
+    session_json = {
+      sessionId: item.attributes[:account],
+      sessionKey: item.password,
+      sessionToken: token.password
+    }.to_json
+
+    get_signin_token_url = signin_url + '?Action=getSigninToken' \
+                           '&SessionDuration=' + (60 * 60 * 12).to_s +
+                           '&Session=' + CGI.escape(session_json)
+  else
+    sts = Aws::STS::Client.new(access_key_id: item.attributes[:account],
+                               secret_access_key: item.password)
+
+    session = sts.get_federation_token(name: ENV['USER'],
+                                       policy: policy_json,
+                                       duration_seconds: (60 * 60 * 12))
+    session_json = {
+      sessionId: session.credentials[:access_key_id],
+      sessionKey: session.credentials[:secret_access_key],
+      sessionToken: session.credentials[:session_token]
+    }.to_json
+
+    get_signin_token_url = signin_url + '?Action=getSigninToken' \
+                           '&Session=' + CGI.escape(session_json)
+  end
 
   returned_content = open(get_signin_token_url).read
 
   signin_token = JSON.parse(returned_content)['SigninToken']
   signin_token_param = '&SigninToken=' + CGI.escape(signin_token)
-
   destination_param = '&Destination=' + CGI.escape(console_url)
 
   login_url = signin_url + '?Action=login' + signin_token_param + destination_param
