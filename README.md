@@ -1,5 +1,11 @@
 # AWS Keychain Util
 
+*Note:* I've mostly moved on using [vaulted](https://github.com/miquella/vaulted)
+for my SSH credential management. It also does cool things like managing
+ssh-agents with only certain keys in them, so you don't accidentally leak
+your keys to hosts that shouldn't have them. There probably won't be future
+updates to AWS Keychain Util, unless someone else wants to take it over.
+
 This gem provides a small command line utility that helps
 manage AWS credentials in an OS X keychain, keeping them out
 of your dotfiles.
