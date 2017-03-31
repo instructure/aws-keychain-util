@@ -8,8 +8,10 @@ require 'rubygems'
 require 'highline'
 require 'keychain'
 require 'json'
+require 'cgi'
 require 'aws_keychain_util'
 require 'aws-sdk'
+require 'open-uri'
 
 trap('SIGINT') do
   puts
@@ -119,8 +121,8 @@ when 'init'
   keychain.lock_interval = 300
   keychain.lock_on_sleep = true
 
-  $prefs = { 'aws_keychain_name' => name, 'shell_arguments' => shell_arguments }
-  File.new(AwsKeychainUtil::PREFS_FILE, 'w').write JSON.dump($prefs)
+  prefs = { 'aws_keychain_name' => name, 'shell_arguments' => shell_arguments }
+  File.new(AwsKeychainUtil::PREFS_FILE, 'w').write JSON.dump(prefs)
 
   puts 'Your AWS keychain has been created and configured to auto-lock after'
   puts '5 minutes, and when sleeping. You can change those options in'
@@ -143,7 +145,7 @@ when 'add'
   name     =        ask('      account name: ')
   account  =        ask('     access key id: ')
   password = ask_secure(' secret_access_key: ')
-  arn      =        ask('           mfa arn: ')
+  arn      =        ask('(optional) mfa arn: ')
 
   item = keychain.generic_passwords.create(
     label: name,
@@ -164,15 +166,12 @@ when 'rm'
 
 when 'add-role'
   keychain = load_keychain
-  name = get_name_from_args_for_command('add-role')
-  item = get_valid_item(name)
-
-  role     = ask('         role name: ')
-  arn      = ask('          role arn: ')
+  role_name = ask('         role name: ')
+  arn       = ask('          role arn: ')
 
   keychain.generic_passwords.create(
-    label: "#{name} role #{role}",
-    account: role,
+    label: "role #{role_name}",
+    account: role_name,
     password: '',
     comment: arn
   )
@@ -184,7 +183,7 @@ when 'assume-role'
   code = ARGV.shift
 
   unless name
-    puts "Usage: #{$PROGRAM_NAME} assume-role <name> <role-name> [<mfa>]"
+    puts "Usage: #{$PROGRAM_NAME} assume-role <name> <role-name> [<mfa-code>]"
     exit 1
   end
 
@@ -200,7 +199,7 @@ when 'assume-role'
 
   exit 0 if 'none' == role_name || role_name.nil?
 
-  item_role = get_valid_item("#{name} role #{role_name}")
+  item_role = get_valid_item("role #{role_name}")
 
   sts = Aws::STS::Client.new(access_key_id: item.attributes[:account], secret_access_key: item.password)
 
@@ -223,7 +222,7 @@ when 'assume-role'
       keychain.generic_passwords.create(label: "#{name} role-token",
                                         account: "#{response.credentials[:access_key_id]}_token",
                                         password: response.credentials[:session_token],
-                                        comment: "#{name} role #{role_name}")
+                                        comment: "role #{role_name}")
 
       puts "AssumeRoleAuthentication succeeded, expiration is #{response.credentials[:expiration]}"
     rescue Aws::STS::Errors::AccessDenied => e
@@ -270,11 +269,10 @@ when 'mfa'
 
 when 'env'
   item, token = get_item_from_args_for_command('env')
-  key = item.password
   puts "export AWS_ACCESS_KEY_ID=\"#{item.attributes[:account]}\""
   puts "export AWS_ACCESS_KEY=\"#{item.attributes[:account]}\""
-  puts "export AWS_SECRET_ACCESS_KEY=\"#{key}\""
-  puts "export AWS_SECRET_KEY=\"#{key}\""
+  puts "export AWS_SECRET_ACCESS_KEY=\"#{item.password}\""
+  puts "export AWS_SECRET_KEY=\"#{item.password}\""
   if token
     puts "export RPROMPT=\"(aws #{token.attributes[:comment]})\""
     puts "export AWS_CREDS_NAME=\"#{token.attributes[:comment]}\""
@@ -318,7 +316,59 @@ when 'shell'
     exec(aws_env, *ARGV)
   end
 
+when 'console'
+  item, token = get_item_from_args_for_command('console')
+
+  console_url = 'https://console.aws.amazon.com/console/home'
+  signin_url = 'https://signin.aws.amazon.com/federation'
+  policy_json = {
+    Version: '2012-10-17',
+    Statement: [{
+      Action: '*',
+      Resource: '*',
+      Effect: 'Allow'
+    }]
+  }.to_json
+
+  if token
+    session_json = {
+      sessionId: item.attributes[:account],
+      sessionKey: item.password,
+      sessionToken: token.password
+    }.to_json
+
+    get_signin_token_url = signin_url + '?Action=getSigninToken' \
+                           '&SessionDuration=' + (60 * 60 * 12).to_s +
+                           '&Session=' + CGI.escape(session_json)
+  else
+    sts = Aws::STS::Client.new(access_key_id: item.attributes[:account],
+                               secret_access_key: item.password)
+
+    session = sts.get_federation_token(name: ENV['USER'],
+                                       policy: policy_json,
+                                       duration_seconds: (60 * 60 * 12))
+    session_json = {
+      sessionId: session.credentials[:access_key_id],
+      sessionKey: session.credentials[:secret_access_key],
+      sessionToken: session.credentials[:session_token]
+    }.to_json
+
+    get_signin_token_url = signin_url + '?Action=getSigninToken' \
+                           '&Session=' + CGI.escape(session_json)
+  end
+
+  returned_content = open(get_signin_token_url).read
+
+  signin_token = JSON.parse(returned_content)['SigninToken']
+  signin_token_param = '&SigninToken=' + CGI.escape(signin_token)
+  destination_param = '&Destination=' + CGI.escape(console_url)
+
+  login_url = signin_url + '?Action=login' + signin_token_param + destination_param
+
+  pid = spawn("open \"#{login_url}\"")
+  Process.wait pid
+
 else
   puts "Usage: #{$PROGRAM_NAME} <command> <arguments>"
-  puts '  Commands: init, ls, add, add-role, assume-role, cat, env, mfa, rm, shell'
+  puts '  Commands: init, ls, add, add-role, assume-role, cat, console, env, mfa, rm, shell'
 end
