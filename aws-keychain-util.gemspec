@@ -18,7 +18,7 @@ Gem::Specification.new do |gem|
 
   gem.add_dependency('ruby-keychain', '~> 0.2.0')
   gem.add_dependency('highline')
-  gem.add_dependency('aws-sdk', '> 2.0')
+  gem.add_dependency('aws-sdk-core', '> 2.0')
   gem.add_development_dependency 'rubocop'
   gem.add_development_dependency 'rake'
 end
