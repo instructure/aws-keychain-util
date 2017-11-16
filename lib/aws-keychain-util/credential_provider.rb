@@ -1,6 +1,6 @@
-require 'aws-sdk'
+require 'aws-sdk-core'
 require 'keychain'
-require 'aws-keychain-util'
+require 'aws_keychain_util'
 
 module AwsKeychainUtil
   # class to automatically grab AWS credentials from your keychain

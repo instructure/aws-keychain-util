@@ -9,7 +9,7 @@ require 'highline'
 require 'keychain'
 require 'json'
 require 'aws_keychain_util'
-require 'aws-sdk'
+require 'aws-sdk-core'
 
 trap('SIGINT') do
   puts
