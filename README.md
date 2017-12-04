@@ -78,6 +78,10 @@ the aws-sdk gem, add the following code:
     require 'aws-keychain-util/credential_provider'
     Aws.config[:credentials] = AwsKeychainUtil::CredentialProvider.new('<name>', 'keychain name')
 
+To open AWS Management Console in your web browser:
+
+    $ aws-creds console <name>
+
 To remove an item from your aws keychain:
 
     $ aws-creds rm <name>
